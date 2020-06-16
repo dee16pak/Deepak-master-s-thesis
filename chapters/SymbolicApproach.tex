@@ -1,0 +1,46 @@
+\chapter{Symbolic Approach and DoS Patterns}
+\label{ch:symA}
+\section{A Symbolic Approach to find DoS Vulnerabilities in Ethereum Smart Contracts}
+Symbolic execution\cite{symbolic} is a means of analyzing a program based on the inputs that the program can take and paths that can be traversed because of different inputs. Suppose we have a function with arguments which can be called by external user. These arguments will be of some types for example integer, string, boolean, etc. Every type have some range of sets of value that can be assigned to variable. Hence the external user have a set of choices which he can use while calling the function. Hence instead of testing the program on some random fixed inputs every argument is considered as symbolic variable. The program execution will go on as normal and when the argument is used in some computation during the execution of the program the symbolic variable will used. This will generate symbolic expression as the program execution proceeds. This symbolic expression/variable can be used to resolve the condition branch to decide logically whether certain path from the current execution point is reachable or not. A symbolic execution is shown in the example below.\\
+\begin{Verbatim}[numbers=left,xleftmargin=5mm]
+    pragma solidity ^0.4.24;
+    contract BasicToken {
+    function fun(uint256 s) public  view returns (uint256) {
+        uint c = s; /*/ c = sym
+        c = s + 1; /*/ c = sym + 1
+        for(uint i = 0; i < c; i++){ /*/ for(uint i = 0; i < sym + 1; i++){
+            // some code
+        }
+        if(c > 10){ /*/ if(sym + 1 > 10){
+            //some code
+        }
+        else{
+            //some code
+        }
+        return c;
+    }
+}
+\end{Verbatim}
+In the above example the variable \emph{s} is symbolic because \em{fun} is an external function in solidity and can be called by whoever wants to interact with the smart contract using the \emph{fun} function. The function also has an argument that is to be supplied by the caller through transaction payload that is used to call the function. The symbolic execution of the function will treat \em{a} as a symbolic argument. On assignment of symbolic variable on line 4, the local variable will be assigned a symbolic value, \em{sym}. Line 5 of the codes do some processing with the symbolic variable and hence a symbolic expression is the result of the processing, \em{sym + 1}. Now this symbolic expression if used for branch decision, then it will be feed to the SMT solver in order to symbolically decide which branch which path to traverse. There may be possibility to traverse all the paths or one path according to the satisfiability of the symbolic expression. For example, loop condition on line 6 is satisfiable for both the paths, loops can be traversed for the condition $i >= sym$ and loop can break for the condition $i < sym$. Similarly on Line 9 of the code if condition is satisfied for $sym >= 10$ and not satisfied for $sym < 10$.\\
+Hence in order to find DoS vulnerabilities we will execute all paths of a smart contract which can be traversed symbolically and check for vulnerabilities patterns as discussed below during the execution of the smart contract.
+\section{Vulnerability Patterns}
+\begin{itemize}
+    \item \textbf{Call to address changed by attacker}\\
+    An attacker is able to change the address of the external call made from the victim contract. This ability may be the functionality of the contract as we have seen in the chapter 3. But this can be used against the victim contract. The attacker can purposely and deliberately code his fallback function in such a way that the call will never be executed successfully. Now there will be multiple scenarios
+    \begin{itemize}
+        \item \textbf{Exception check on the call in victim contract}\\
+        The failed call will revert the execution of the victim contract and hence the particular function will throw an exception and the execution of the victim contract will stop every time the particular function containing such call is invoked. This will make every execution trace containing such calls revert and become unavailable for use.
+        \item \textbf{No exception check on the call in the victim contract}\\
+        The inbuilt functions \emph{send() and call()} do not throw exceptions by themselves, instead they must be handled manually. In case they are not handled then the \textbf{King of Ether} contract will execute normally and only the attacker will be in loss because he is removed from the throne and the ether he invested also lost due to the failed call. But these functions return values for example call return 1 on success and 0 on fail. There could be some computations based on this return value. Now even though there is no exception and nobody knows if there is anything wrong, the path of execution which is supposed to be executed on the success of the call will never be reached. Hence this can also lead to denial of service if the logic of the smart contract permits.
+        \item \textbf{variable gas limit in \emph{call()} function}\\
+        The \emph{send() and transfer()} function have gas limits and are easy to exploit for the DoS attack in the above scenario. But the \emph{call()} function have the option to set the limit of gas to be send to the called contract. But this will not pose any serious threat to the vulnerability as the attacker can try different gas limit fallback function to consume all the gas.
+        \end{itemize}
+        Hence if on traversing any execution trace we came across a \emph{call()} function whose \emph{address} argument is symbolic variable or symbolic expression, the tool flag the contract as vulnerable.
+    \item \textbf{Loop with Symbolic Variable Condition}\\
+    Ethereum have a block gas limit. If a block consumes more gas than the limit then the execution stops and the transaction reverts. Hence this path of execution will never be completed and hence the denial of service. If the conditional expression is symbolic variable/expression it can take different values and can lead to block gas limit. Please note that loops with conditional expressions as fixed can also reach the block gas limit if the the fixed value is large enough. But this block gas limit will be from start of the deployment of code on ethereum and no malicious person is needed to invoke that vulnerability.Hence the loops with conditional expressions as symbolic variable/expressions are considered as vulnerable.
+    
+    \item \textbf{Call to address changed by attacker in loop}\\
+    This is no different vulnerability. It is the same as \emph{Call to Address Changed by Attacker} but inside the loop. There is no condition on loop. It can be with the conditional expression as fixed value or it can be with the conditional expression as symbolic variable/expression.
+    \item \textbf{CREATE2 Opcode}\\
+    An exploitable information leak / denial of service vulnerability exists in the libevm ( Ethereum Virtual Machine ) \emph{CREATE2} opcode handler of CPP-Ethereum. Hence if in the bytecode \emph{CREATE2} opcode id found we considered it as vulnerable.
+\end{itemize}

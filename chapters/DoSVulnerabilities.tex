@@ -1,0 +1,107 @@
+\chapter{DoS Vulnerabilities in Ethereum Smart Contracts}
+\label{ch:DosVul}
+There are few DoS attacks/vulnerabilities found in the past which exploit smart contract vulnerabilities\cite{knownattacks}\cite{kattack}.
+\section{King of Ether Smart Contract\cite{koet}}
+In 2016 this contract was deployed. It was a game where players send ether to the contract to take the throne. The new player claims the throne whenever he/she send more ether. If 14 days passed and there is no new successors, the throne was reset and game started all over again. The idea is every successor have to pay more ether than the previous successor in order to take the throne. Hence value of throne increases with more and more successors\cite{pomzigame}. The contract's function to update the successor looks similar to the code below.
+
+\begin{Verbatim}[numbers=left,xleftmargin=5mm]
+contract setThrone {
+    address currentSuccessor;
+    uint highestValue;
+    
+    function claimThrone() payable {
+        require(msg.value > highestValue);
+        require(currentSuccessor.send(highestValue)); // Refund the old Successor else revert
+        currentSuccessor = msg.sender;
+        highestValue = msg.value;
+    }
+}
+\end{Verbatim}
+The problem in the contract is with the statement
+\begin{center}
+    \emph{require(currentSuccessor.send(highestValue));}
+\end{center}
+
+\noindent The \emph{address.send()} have a gas limit of 2300 gas. While this is good to prevent reentrency bug but this limit of gas will result in failure to send the ether to the previous successor's contract if the player's(previous successor's) fallback function consumes more than 2300 gas. Hence the player can claim throne and then fails the send command purposely so that no new player can claim throne even if the new player is eligible to claim the throne. This results is denial of service of the contract by rejecting new thrones even if eligible.
+\section{Block Gas Limit}
+Each block has a limit on the amount of gas spent. If the amount of gas spend exceeds the limit the transaction will fail. Hence this transaction can never be added into the blockchain. This will lead to the denial of service since that contract will no longer work as this transactions will not be added into the blockchain. Unbounded loops are the cause for this vulnerability. If the attacker can manipulate the loop limit, he/she can manipulate the amount of gas spend within the block. There are two primary ways to make loops unbounded.
+\begin{enumerate}
+    \item Let's consider the below smart contract
+    \begin{Verbatim}[numbers=left,xleftmargin=5mm]
+    pragma solidity ^0.4.24;
+    contract BasicToken {
+        uint256[] balances;
+        function add(uint256 a) private  {
+            balances.push(a);
+        }
+        function balanceOf() public  view returns (uint256) {
+            uint c = 1;
+            add(i);
+            return c;
+        }
+        function print() public view returns (uint256){
+            uint256 temp = 0;
+            for(uint256 i = 0; i < balances.length; i++){
+                temp += balances[i];
+            }
+            return temp;
+        }
+    }
+    \end{Verbatim}
+    
+    The \emph{balanceOf()} function in the above contract let anyone add items to the \emph{balances} array. Then in the \emph{print()} function the loop condition is on the length of the \emph{balances}. An attacker can intentionally add garbage values to the \emph{balances} array and then \emph{print()} function will exceeds the block gas limit. Hence the transaction containing \emph{print()} function call will always fail when the \emph{balances} array length reach a certain limit. Hence \emph{print()} function will become unavailable. 
+    \item Changing loop length directly\\
+    The iteration of loops can be on a constant value, or an variable, or dynamic array, or mapping. All of these other than the constant value can be changed directly by assigning value to it by assigning a direct value. If such assignment statement is controlled by external user then it could lead to vulnerable loop.\\
+    \\
+    For example the following statement in the above smart contract\\
+    \emph{balances.length = \textbf{arbitrary value}}\\
+    \emph{\textbf{arbitrary value}} is given as argument to \emph{balanceOf()} function.\\
+    
+    
+\end{enumerate}
+It is to be noted that these conditions for making loops unbounded could be made accessible only to some allowed addresses. These addresses are decided by the owner of the smart contract for example if the above smart contract is change as below. Line 6-13 are added in the above smart contract. An variable \emph{owner} of type address is added. The value of \emph{owner} is set in the constructor. \emph{modifier onlyowner()} checks whether the caller address is same as owner. If both the addresses matches then the program proceeds further else revert. Now even if the \emph{balanceOf()} function is called by anyone, the call from the owner address will proceeds further. All other addresses(other than owner) which try to take benefit of \emph{balanceOf()} function will fail. Even though this will also result in denial of service for the \emph{print()} function, this case should not be considered as a vulnerability because no outsider is able to exploit the denial of service vulnerability. Maybe the coder is aware of such behaviour and still he wants to code this contract. Hence we cannot be sure of the intent of the coder and therefore this thesis will focus only on the cases which can be exploited by the the attackers. 
+
+\newpage
+\begin{Verbatim}[numbers=left,xleftmargin=5mm]
+    pragma solidity ^0.4.24;
+
+    contract BasicToken {
+       uint256[] balances;
+       
+       address owner; // owner address
+       constructor(address o) public { // constructor to set owner
+           owner = o;
+       }
+       modifier onlyowner(){ // modifier to check if caller is owner else revert
+           if(msg.sender != owner) throw;
+           _;
+       }
+    
+       function add(uint256 a) private  {
+           balances.push(a);
+       }
+       function balanceOf() public  onlyowner view returns (uint256) {
+           uint c = 1;
+           add(i);
+           return c;
+       }
+       function print() public view returns (uint256){
+           uint256 temp = 0;
+           for(uint256 i = 0; i < balances.length; i++){
+               temp += balances[i];
+           }
+           return temp;
+       }
+    }
+\end{Verbatim}
+% \newpage
+\section{CREATE2 Information Leak Vulnerability}
+An exploitable information leak / denial of service vulnerability exists in the libevm ( Ethereum Virtual Machine ) \emph{CREATE2} opcode handler of CPP-Ethereum. The attacker can create smart contract to trigger this vulnerability. Hence use of \emph{CREATE2} vulnerability should be considered as denial of service vulnerability.\cite{talos}
+
+\section{Existing related work on DoS}
+\begin{itemize}
+    \item \textbf{An Adaptive Gas Cost Mechanism for Ethereum to Defend Against Under-Priced DoS Attacks\cite{10.1007/978-3-319-72359-4_1}} proposes a novel gas cost mechanism, which dynamically adjusts the costs of EVM operations according to the number of executions, to thwart DoS attacks. 
+    \item \textbf{SmartCheck: Static Analysis of Ethereum Smart Contracts\cite{8445052}} is a static analysis tool\cite{sctool}\cite{scgithub} which looks for conditional statements (if, for, while ) containing condition as an external call. This tool also looks for the unbounded loop.
+    \item \textbf{Slither: A Static Analysis Framework for Smart Contracts\cite{8823898}} is another static analyzer tool\cite{slgithub} where external calls in loops is considered as one of the vulnerability. 
+
+\end{itemize}

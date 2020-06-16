@@ -1,0 +1,11 @@
+\chapter{Summary and Future Work}
+\label{ch:conclusion}
+\subsection*{Summary}
+In this thesis we develop a symbolic analysis tool for checking whether a smart contract is vulnerable for denial of service vulnerabilities or not. We start by looking at denial of service vulnerabilities in smart contract discovered already in the past. We deduced some patterns because of which those vulnerabilities were possible. We then go on to explain the tool and various components in the tool. We explained some designed choices in order for the successful execution of the tool. We then discuss the results and some details about the shortcoming of the tool, where the tool will fail. \\
+\subsection*{Future Work}
+\begin{itemize}
+    \item We can build a type checking\cite{typechecking} module that works alongside of the code in order to help SMT solver to decide what range to check instead of checking fixed range values.
+    \item One can think of extending the tool for more patterns of Dos attacks which can be found in future.
+    \item The tool is detecting whether smart contract is vulnerable and that vulnerability arises from which external function using the function signature. But we have only used function signature which are keccak256 of the functions in solidity. We can also join bytecode to source code reverse engineering\cite{217583} tool\cite{erays} to exactly determine the functionality of the function that is causing the vulnerability.
+    \item This tool is specifically made for checking vulnerabilities in ethereum smart contracts. Similar approach can be followed for other smart contracts available. 
+\end{itemize}
